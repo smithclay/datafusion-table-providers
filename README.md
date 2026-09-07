@@ -40,6 +40,7 @@ Existing examples continue to use the facade crate and its feature flags.
 - ADBC (`datafusion-table-providers-adbc`)
 - ODBC (`datafusion-table-providers-odbc`)
 - Oracle (`datafusion-table-providers-oracle`)
+- Quack, DuckDB's remote protocol (`datafusion-table-providers-quack`)
 
 ## Development
 
@@ -223,6 +224,29 @@ done
 echo "Oracle is ready!"
 
 cargo test -p datafusion-table-providers --test integration --no-default-features --features oracle -- oracle
+```
+
+### Quack (DuckDB remote protocol)
+
+The Quack provider talks to a DuckDB instance serving the experimental [Quack](https://github.com/duckdb/duckdb) remote protocol over HTTP, using the [`quack_protocol`](https://github.com/smithclay/quack_protocol_rs) client. It is read-only: tables are queried with DuckDB SQL (filters, projections and limits are pushed down, and whole queries with the default `federation` feature), and results stream back as Arrow record batches. Every concurrent scan takes its own server session from a pool sized by `max_connections`.
+
+Start a server with a DuckDB CLI that has the `quack` extension installed:
+
+```bash
+tail -f /dev/null | duckdb -init /dev/null \
+  -cmd "INSTALL quack; LOAD quack; CALL quack_serve('quack:127.0.0.1:9494', token = 'super_secret');" &
+
+# Run from repo folder
+cargo run -p datafusion-table-providers --example quack --features quack
+```
+
+Pool parameters: `uri` (required; `host:port`, `quack:host:port` or `http(s)://host:port`), `auth_token`, `max_connections` (default 4), `ssl`, `timeout` (seconds).
+
+The live integration tests skip unless a server is reachable:
+
+```bash
+QUACK_SERVER_URI=quack:127.0.0.1:9494 QUACK_AUTH_TOKEN=super_secret \
+  cargo test -p datafusion-table-providers-quack
 ```
 
 ### MongoDB

@@ -2504,6 +2504,7 @@ dependencies = [
  "datafusion-table-providers-odbc",
  "datafusion-table-providers-oracle",
  "datafusion-table-providers-postgres",
+ "datafusion-table-providers-quack",
  "datafusion-table-providers-sqlite",
  "duckdb",
  "futures",
@@ -2808,6 +2809,23 @@ dependencies = [
  "duckdb",
  "pyo3",
  "tokio",
+]
+
+[[package]]
+name = "datafusion-table-providers-quack"
+version = "0.13.1"
+dependencies = [
+ "arrow",
+ "async-trait",
+ "datafusion",
+ "datafusion-federation",
+ "datafusion-table-providers-common",
+ "futures",
+ "quack_protocol",
+ "secrecy",
+ "snafu",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -3695,6 +3713,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
+ "webpki-roots",
 ]
 
 [[package]]
@@ -5737,6 +5756,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "quack_protocol"
+version = "0.3.0-alpha.1"
+source = "git+https://github.com/smithclay/quack_protocol_rs?rev=3897a1def49c0098c63e2d3938bb058b37aedf44#3897a1def49c0098c63e2d3938bb058b37aedf44"
+dependencies = [
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-schema",
+ "async-stream",
+ "base64 0.22.1",
+ "chrono",
+ "futures-core",
+ "futures-util",
+ "indexmap",
+ "reqwest 0.12.28",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "quick-xml"
 version = "0.39.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6093,6 +6134,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-streams",
  "web-sys",
+ "webpki-roots",
 ]
 
 [[package]]

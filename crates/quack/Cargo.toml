@@ -1,0 +1,32 @@
+[package]
+name = "datafusion-table-providers-quack"
+version = { workspace = true }
+readme = { workspace = true }
+edition = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
+description = "DataFusion table provider for DuckDB's Quack remote protocol"
+
+[dependencies]
+arrow = { workspace = true }
+async-trait = "0.1"
+datafusion = { workspace = true, default-features = false, features = ["sql"] }
+datafusion-federation = { workspace = true, features = ["sql"], optional = true }
+datafusion-table-providers-common = { workspace = true }
+futures = "0.3"
+quack_protocol = { git = "https://github.com/smithclay/quack_protocol_rs", rev = "3897a1def49c0098c63e2d3938bb058b37aedf44", features = ["arrow"] }
+secrecy = "0.10"
+snafu = "0.9"
+tokio = { version = "1.52", features = ["macros"] }
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1.52", features = ["macros", "rt-multi-thread"] }
+
+[features]
+default = ["federation"]
+federation = ["dep:datafusion-federation", "datafusion-table-providers-common/federation"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

@@ -8,7 +8,7 @@ use datafusion::execution::SendableRecordBatchStream;
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
 use datafusion::sql::TableReference;
 use futures::{StreamExt, TryStreamExt};
-use quack_protocol::{QuackError, QuackPool, Value};
+use quack_protocol::{QuackError, QuackPool};
 use snafu::prelude::*;
 
 use datafusion_table_providers_common::sql::db_connection_pool::dbconnection::{
@@ -159,14 +159,9 @@ impl AsyncDbConnection<QuackPool, ()> for QuackConnection {
     }
 
     async fn execute(&self, sql: &str, _params: &[()]) -> Result<u64> {
-        // DuckDB answers DML with a single-row, single-column `Count` result;
-        // DDL yields no rows. Anything else is drained and reported as 0.
-        let values = self.pool.values(sql).await?;
-        Ok(match values.as_slice() {
-            [Value::Int(n)] => u64::try_from(*n).unwrap_or(0),
-            [Value::UInt(n)] => *n,
-            _ => 0,
-        })
+        // `Some(n)` for DML; `None` for DDL and plain queries, which the trait
+        // (a bare `u64`) can only report as 0.
+        Ok(self.pool.execute(sql, None).await?.unwrap_or(0))
     }
 }
 

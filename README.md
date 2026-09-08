@@ -240,7 +240,7 @@ tail -f /dev/null | duckdb -init /dev/null \
 cargo run -p datafusion-table-providers --example quack --features quack
 ```
 
-Pool parameters: `uri` (required; `host:port`, `quack:host:port` or `http(s)://host:port`), `auth_token`, `max_connections` (default 4), `ssl`, `timeout` (seconds).
+Pool parameters: `uri` (required; `host:port`, `quack:host:port` or `http(s)://host:port`), `auth_token`, `max_connections` (default 4), `ssl`, `timeout` (seconds), and `header_<name>` for extra HTTP headers.
 
 The live integration tests skip unless a server is reachable:
 

@@ -2,7 +2,10 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use quack_protocol::{QuackClientOptions, QuackPool, QuackPoolOptions, DEFAULT_MAX_CONNECTIONS};
+use quack_protocol::{
+    HeaderName, HeaderValue, QuackClientOptions, QuackPool, QuackPoolOptions,
+    DEFAULT_MAX_CONNECTIONS,
+};
 use secrecy::{ExposeSecret, SecretString};
 use snafu::prelude::*;
 
@@ -31,30 +34,11 @@ pub enum Error {
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// Everything needed to open a [`QuackPool`], parsed from the parameter map.
+#[derive(Debug)]
 pub struct QuackPoolConfig {
     pub uri: String,
     pub client_options: QuackClientOptions,
     pub pool_options: QuackPoolOptions,
-}
-
-impl std::fmt::Debug for QuackPoolConfig {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // `QuackClientOptions` derives `Debug` and would print the auth token.
-        f.debug_struct("QuackPoolConfig")
-            .field("uri", &self.uri)
-            .field(
-                "auth_token",
-                &self
-                    .client_options
-                    .auth_token
-                    .as_ref()
-                    .map(|_| "<redacted>"),
-            )
-            .field("ssl", &self.client_options.ssl)
-            .field("timeout", &self.client_options.timeout)
-            .field("max_connections", &self.pool_options.max_connections)
-            .finish()
-    }
 }
 
 impl QuackPoolConfig {
@@ -67,6 +51,7 @@ impl QuackPoolConfig {
     /// | `max_connections` | sessions the pool may hold open at once (default 4)               |
     /// | `ssl`             | `true`/`false`; overrides what the URI scheme implies             |
     /// | `timeout`         | per-request timeout in seconds                                    |
+    /// | `header_<name>`   | extra HTTP header `<name>` sent with every request                |
     pub fn from_params(params: &HashMap<String, SecretString>) -> Result<Self> {
         let get = |key: &str| {
             params
@@ -93,6 +78,24 @@ impl QuackPoolConfig {
                 reason: format!("expected a number of seconds, got '{timeout}'"),
             })?;
             client_options.timeout = Some(Duration::from_secs(secs));
+        }
+
+        for (key, value) in params {
+            if let Some(name) = key.strip_prefix("header_") {
+                let name = HeaderName::from_bytes(name.as_bytes()).map_err(|e| {
+                    Error::InvalidParameter {
+                        param: key.clone(),
+                        reason: format!("invalid header name: {e}"),
+                    }
+                })?;
+                let value = HeaderValue::from_str(value.expose_secret()).map_err(|e| {
+                    Error::InvalidParameter {
+                        param: key.clone(),
+                        reason: format!("invalid header value: {e}"),
+                    }
+                })?;
+                client_options.headers.insert(name, value);
+            }
         }
 
         let max_connections = match get("max_connections") {
@@ -293,6 +296,53 @@ mod tests {
         ]))
         .unwrap_err();
         assert!(matches!(err, Error::InvalidParameter { ref param, .. } if param == "timeout"));
+    }
+
+    #[test]
+    fn header_params_become_http_headers() {
+        let config = QuackPoolConfig::from_params(&params(&[
+            ("uri", "localhost:9494"),
+            ("header_X-Tenant", "acme"),
+            ("header_x-trace-id", "abc123"),
+        ]))
+        .expect("valid params");
+        let headers = &config.client_options.headers;
+        assert_eq!(headers.len(), 2);
+        assert_eq!(headers.get("x-tenant").unwrap(), "acme");
+        assert_eq!(headers.get("X-Trace-Id").unwrap(), "abc123");
+    }
+
+    #[test]
+    fn invalid_headers_are_rejected() {
+        let err = QuackPoolConfig::from_params(&params(&[
+            ("uri", "localhost:9494"),
+            ("header_bad name", "x"),
+        ]))
+        .unwrap_err();
+        assert!(
+            matches!(err, Error::InvalidParameter { ref param, .. } if param == "header_bad name")
+        );
+
+        let err = QuackPoolConfig::from_params(&params(&[
+            ("uri", "localhost:9494"),
+            ("header_x-thing", "line\nbreak"),
+        ]))
+        .unwrap_err();
+        assert!(
+            matches!(err, Error::InvalidParameter { ref param, .. } if param == "header_x-thing")
+        );
+    }
+
+    #[test]
+    fn debug_output_redacts_the_auth_token() {
+        let config = QuackPoolConfig::from_params(&params(&[
+            ("uri", "localhost:9494"),
+            ("auth_token", "super_secret"),
+        ]))
+        .expect("valid params");
+        let debug = format!("{config:?}");
+        assert!(!debug.contains("super_secret"), "{debug}");
+        assert!(debug.contains("redacted"), "{debug}");
     }
 
     #[test]

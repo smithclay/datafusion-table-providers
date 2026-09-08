@@ -2821,11 +2821,13 @@ dependencies = [
  "datafusion-federation",
  "datafusion-table-providers-common",
  "futures",
+ "libc",
  "quack_protocol",
  "secrecy",
  "snafu",
  "tokio",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

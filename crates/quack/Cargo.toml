@@ -21,7 +21,9 @@ tokio = { version = "1.52", features = ["macros"] }
 tracing = "0.1"
 
 [dev-dependencies]
+libc = "0.2"
 tokio = { version = "1.52", features = ["macros", "rt-multi-thread"] }
+tracing-subscriber = "0.3"
 
 [features]
 default = ["federation"]

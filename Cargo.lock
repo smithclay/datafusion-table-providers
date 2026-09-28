@@ -2825,7 +2825,6 @@ dependencies = [
  "secrecy",
  "snafu",
  "tokio",
- "tracing",
 ]
 
 [[package]]

@@ -69,14 +69,31 @@ const TYPES_ROW: &str = "(
     [1, NULL, 3], ['x', NULL], {'a': 1, 'b': 'z'}, MAP {'k1': 1, 'k2': NULL}, [7, 8, 9],
     42::VARIANT, 'POINT(1 2)')";
 
+/// Columns of `TYPES_TABLE` with DuckDB-only types, which seeded mode leaves out.
+const DUCKDB_ONLY_COLUMNS: &[&str] = &[
+    "c_i128",
+    "c_u128",
+    "c_uuid",
+    "c_enum",
+    "c_json",
+    "c_bit",
+    "c_variant",
+    "c_geom",
+];
+
 #[tokio::test]
 async fn round_trips_every_supported_type() {
     let Some(server) = server() else { return };
     let pool = shared(server.pool(&[]).await);
-    let t = table_name("types");
-    run(&pool, &format!("CREATE TABLE {t} {TYPES_TABLE}")).await;
-    run(&pool, &format!("INSERT INTO {t} VALUES {TYPES_ROW}")).await;
-    run(&pool, &format!("INSERT INTO {t} DEFAULT VALUES")).await;
+    let t = if seeded() {
+        "quack_types".to_string()
+    } else {
+        let t = table_name("types");
+        run(&pool, &format!("CREATE TABLE {t} {TYPES_TABLE}")).await;
+        run(&pool, &format!("INSERT INTO {t} VALUES {TYPES_ROW}")).await;
+        run(&pool, &format!("INSERT INTO {t} DEFAULT VALUES")).await;
+        t
+    };
 
     let table = provider(&pool, &t).await;
     let schema = table.schema();
@@ -100,6 +117,9 @@ async fn round_trips_every_supported_type() {
         ),
     ];
     for (name, data_type) in expected_types {
+        if seeded() && DUCKDB_ONLY_COLUMNS.contains(&name) {
+            continue;
+        }
         assert_eq!(
             schema.field_with_name(name).unwrap().data_type(),
             &data_type,
@@ -113,10 +133,12 @@ async fn round_trips_every_supported_type() {
             field.name()
         );
     }
-    assert_eq!(
-        schema.field_with_name("c_enum").unwrap().metadata()[SOURCE_TYPE_METADATA_KEY],
-        "ENUM('b', 'a')"
-    );
+    if !seeded() {
+        assert_eq!(
+            schema.field_with_name("c_enum").unwrap().metadata()[SOURCE_TYPE_METADATA_KEY],
+            "ENUM('b', 'a')"
+        );
+    }
 
     let expected_values = [
         "c_bool: true",
@@ -162,6 +184,16 @@ async fn round_trips_every_supported_type() {
         "c_geom: 0101000000000000000000f03f0000000000000040",
     ];
 
+    let expected_values: Vec<&str> = expected_values
+        .into_iter()
+        .filter(|value| {
+            !seeded()
+                || !DUCKDB_ONLY_COLUMNS
+                    .iter()
+                    .any(|column| value.starts_with(&format!("{column}: ")))
+        })
+        .collect();
+
     let sql = "SELECT * FROM t ORDER BY c_bool NULLS LAST";
     for ctx in [SessionContext::new(), federated_context()] {
         ctx.register_table("t", Arc::clone(&table)).unwrap();
@@ -178,6 +210,10 @@ async fn round_trips_every_supported_type() {
 #[tokio::test]
 async fn unsupported_types_follow_the_unsupported_type_action() {
     let Some(server) = server() else { return };
+    if seeded() {
+        // the unsupported types (TIMETZ, UNION, BIGNUM) are DuckDB's own
+        return;
+    }
     let t = table_name("unsupported");
     let pool = shared(server.pool(&[]).await);
     run(
@@ -231,20 +267,25 @@ async fn unsupported_types_follow_the_unsupported_type_action() {
 async fn nullability_comes_from_the_catalog_and_batches_match_the_plan_schema() {
     let Some(server) = server() else { return };
     let pool = shared(server.pool(&[]).await);
-    let t = table_name("nullability");
-    run(
-        &pool,
-        &format!(
-            "CREATE TABLE {t} (id INTEGER PRIMARY KEY, name VARCHAR NOT NULL, note VARCHAR, \
-             amount DECIMAL(10,2) NOT NULL)"
-        ),
-    )
-    .await;
-    run(
-        &pool,
-        &format!("INSERT INTO {t} VALUES (1, 'a', NULL, 1.25), (2, 'b', 'n', 2.5)"),
-    )
-    .await;
+    let t = if seeded() {
+        "quack_nullability".to_string()
+    } else {
+        let t = table_name("nullability");
+        run(
+            &pool,
+            &format!(
+                "CREATE TABLE {t} (id INTEGER PRIMARY KEY, name VARCHAR NOT NULL, note VARCHAR, \
+                 amount DECIMAL(10,2) NOT NULL)"
+            ),
+        )
+        .await;
+        run(
+            &pool,
+            &format!("INSERT INTO {t} VALUES (1, 'a', NULL, 1.25), (2, 'b', 'n', 2.5)"),
+        )
+        .await;
+        t
+    };
 
     let table = provider(&pool, &t).await;
     let nullable: Vec<_> = table
@@ -316,9 +357,15 @@ const PUSHDOWN_ROWS: &str = "
 /// in a `MemTable` registered as `expected` that DataFusion filters itself.
 async fn pushdown_context(server: &Server) -> SessionContext {
     let pool = shared(server.pool(&[]).await);
-    let t = table_name("pushdown");
-    run(&pool, &format!("CREATE TABLE {t} {PUSHDOWN_TABLE}")).await;
-    run(&pool, &format!("INSERT INTO {t} VALUES {PUSHDOWN_ROWS}")).await;
+    let t = if seeded() {
+        // the same rows, without the ENUM `e` and HUGEINT `h` columns
+        "quack_pushdown".to_string()
+    } else {
+        let t = table_name("pushdown");
+        run(&pool, &format!("CREATE TABLE {t} {PUSHDOWN_TABLE}")).await;
+        run(&pool, &format!("INSERT INTO {t} VALUES {PUSHDOWN_ROWS}")).await;
+        t
+    };
 
     let ctx = SessionContext::new();
     let table = provider(&pool, &t).await;
@@ -375,6 +422,9 @@ async fn filters_are_pushed_down_only_when_exact() {
     ];
 
     for (filter, exact) in cases {
+        if seeded() && (filter.starts_with("e ") || filter.starts_with("h ")) {
+            continue;
+        }
         let sql = format!("SELECT id FROM t WHERE {filter} ORDER BY id");
         let plan = physical_plan(&ctx, &sql).await;
         let scan = plan
@@ -516,18 +566,23 @@ async fn limit_projection_count_and_sort() {
 async fn federated_joins_run_on_the_server_when_tables_share_a_pool() {
     let Some(server) = server() else { return };
     let pool = shared(server.pool(&[]).await);
-    let (orders, customers) = (table_name("orders"), table_name("customers"));
-    run(&pool, &format!("CREATE TABLE {orders} AS SELECT x AS id, x % 3 AS customer_id, x * 10 AS amount FROM range(9) r(x)")).await;
-    run(
-        &pool,
-        &format!("CREATE TABLE {customers} (id BIGINT, name VARCHAR)"),
-    )
-    .await;
-    run(
-        &pool,
-        &format!("INSERT INTO {customers} VALUES (0, 'ann'), (1, 'bo'), (2, 'cy')"),
-    )
-    .await;
+    let (orders, customers) = if seeded() {
+        ("quack_orders".to_string(), "quack_customers".to_string())
+    } else {
+        let (orders, customers) = (table_name("orders"), table_name("customers"));
+        run(&pool, &format!("CREATE TABLE {orders} AS SELECT x AS id, x % 3 AS customer_id, x * 10 AS amount FROM range(9) r(x)")).await;
+        run(
+            &pool,
+            &format!("CREATE TABLE {customers} (id BIGINT, name VARCHAR)"),
+        )
+        .await;
+        run(
+            &pool,
+            &format!("INSERT INTO {customers} VALUES (0, 'ann'), (1, 'bo'), (2, 'cy')"),
+        )
+        .await;
+        (orders, customers)
+    };
 
     let sql = "SELECT c.name, sum(o.amount) AS total FROM o JOIN c ON o.customer_id = c.id \
                GROUP BY c.name ORDER BY c.name";
@@ -565,12 +620,17 @@ async fn federated_joins_run_on_the_server_when_tables_share_a_pool() {
 async fn federated_scan_applies_filters_pushed_into_it_at_execution() {
     let Some(server) = server() else { return };
     let pool = shared(server.pool(&[]).await);
-    let t = table_name("runtime_filters");
-    run(
-        &pool,
-        &format!("CREATE TABLE {t} AS SELECT x AS k FROM range(1000) r(x)"),
-    )
-    .await;
+    let t = if seeded() {
+        "quack_runtime_filters".to_string()
+    } else {
+        let t = table_name("runtime_filters");
+        run(
+            &pool,
+            &format!("CREATE TABLE {t} AS SELECT x AS k FROM range(1000) r(x)"),
+        )
+        .await;
+        t
+    };
 
     let ctx = federated_context();
     ctx.register_table("q", provider(&pool, &t).await).unwrap();
@@ -649,12 +709,17 @@ async fn exhausted_pool_times_out_and_a_dropped_stream_frees_its_session() {
             ])
             .await,
     );
-    let t = table_name("exhaust");
-    run(
-        &pool,
-        &format!("CREATE TABLE {t} AS SELECT x AS k FROM range(1000000) r(x)"),
-    )
-    .await;
+    let t = if seeded() {
+        "quack_exhaust".to_string()
+    } else {
+        let t = table_name("exhaust");
+        run(
+            &pool,
+            &format!("CREATE TABLE {t} AS SELECT x AS k FROM range(1000000) r(x)"),
+        )
+        .await;
+        t
+    };
 
     let ctx = SessionContext::new();
     ctx.register_table("t", provider(&pool, &t).await).unwrap();
@@ -704,15 +769,20 @@ async fn exhausted_pool_times_out_and_a_dropped_stream_frees_its_session() {
 async fn table_names_resolve_like_duckdb_and_missing_tables_are_reported() {
     let Some(server) = server() else { return };
     let pool = shared(server.pool(&[]).await);
-    let name = format!("Mixed{}", table_name("Case"));
-    run(&pool, &format!("CREATE TABLE \"{name}\" (id INTEGER)")).await;
-    run(&pool, &format!("INSERT INTO \"{name}\" VALUES (7)")).await;
-    let view = table_name("view");
-    run(
-        &pool,
-        &format!("CREATE VIEW {view} AS SELECT id FROM \"{name}\""),
-    )
-    .await;
+    let (name, view) = if seeded() {
+        ("MixedCase_seed".to_string(), "quack_view".to_string())
+    } else {
+        let name = format!("Mixed{}", table_name("Case"));
+        run(&pool, &format!("CREATE TABLE \"{name}\" (id INTEGER)")).await;
+        run(&pool, &format!("INSERT INTO \"{name}\" VALUES (7)")).await;
+        let view = table_name("view");
+        run(
+            &pool,
+            &format!("CREATE VIEW {view} AS SELECT id FROM \"{name}\""),
+        )
+        .await;
+        (name, view)
+    };
 
     for reference in [
         TableReference::bare(name.as_str()),
@@ -747,17 +817,22 @@ async fn table_names_resolve_like_duckdb_and_missing_tables_are_reported() {
 async fn create_external_table_attaches_to_an_existing_table() {
     let Some(server) = server() else { return };
     let pool = shared(server.pool(&[]).await);
-    let (a, b) = (table_name("ext_a"), table_name("ext_b"));
-    run(
-        &pool,
-        &format!("CREATE TABLE {a} AS SELECT x AS id FROM range(3) r(x)"),
-    )
-    .await;
-    run(
-        &pool,
-        &format!("CREATE TABLE {b} AS SELECT x AS id, 'n' || x AS name FROM range(3) r(x)"),
-    )
-    .await;
+    let (a, b) = if seeded() {
+        ("quack_ext_a".to_string(), "quack_ext_b".to_string())
+    } else {
+        let (a, b) = (table_name("ext_a"), table_name("ext_b"));
+        run(
+            &pool,
+            &format!("CREATE TABLE {a} AS SELECT x AS id FROM range(3) r(x)"),
+        )
+        .await;
+        run(
+            &pool,
+            &format!("CREATE TABLE {b} AS SELECT x AS id, 'n' || x AS name FROM range(3) r(x)"),
+        )
+        .await;
+        (a, b)
+    };
 
     let mut state =
         SessionStateBuilder::from(datafusion_federation::default_session_state()).build();
@@ -831,11 +906,17 @@ fn pool_opens_and_hands_out_sessions_without_a_tokio_runtime() {
 
     // The sessions stay usable from an ordinary runtime afterwards.
     let pool = shared(pool);
-    let t = table_name("no_runtime");
+    let t = if seeded() {
+        "quack_no_runtime".to_string()
+    } else {
+        table_name("no_runtime")
+    };
     tokio::runtime::Runtime::new()
         .expect("runtime")
         .block_on(async {
-            run(&pool, &format!("CREATE TABLE {t} AS SELECT 42 AS answer")).await;
+            if !seeded() {
+                run(&pool, &format!("CREATE TABLE {t} AS SELECT 42 AS answer")).await;
+            }
             let ctx = SessionContext::new();
             ctx.register_table("t", provider(&pool, &t).await).unwrap();
             assert_eq!(

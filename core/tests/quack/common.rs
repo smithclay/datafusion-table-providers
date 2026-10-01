@@ -11,6 +11,14 @@ use futures::TryStreamExt;
 use rand::RngExt;
 use secrecy::SecretString;
 
+/// Seeded mode (`QUACK_SEED_MODE=1`), for servers other than DuckDB, such as
+/// `datafusion-quack --seed provider-fixtures`: the server preloads fixed fixture
+/// tables, and the tests read those instead of creating DuckDB tables. Checks that
+/// need DuckDB-only types (HUGEINT, ENUM, UUID, collations, ...) are left out.
+pub fn seeded() -> bool {
+    std::env::var("QUACK_SEED_MODE").is_ok_and(|mode| mode == "1")
+}
+
 /// A Quack server given by `QUACK_SERVER_URI` (and `QUACK_AUTH_TOKEN`).
 pub struct Server {
     uri: String,

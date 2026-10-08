@@ -32,8 +32,8 @@ use datafusion_table_providers_common::sql::sql_provider_datafusion::{self, SqlT
 use datafusion_table_providers_common::SOURCE_TYPE_METADATA_KEY;
 use futures::StreamExt;
 
-use crate::conn::QuackSession;
-use crate::pool::QuackConnectionPool;
+use crate::quack::conn::QuackSession;
+use crate::quack::pool::QuackConnectionPool;
 
 /// A table on a Quack server, scanned through [`SqlTable`] with DuckDB's SQL dialect.
 ///

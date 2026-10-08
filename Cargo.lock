@@ -2543,7 +2543,6 @@ dependencies = [
  "datafusion-table-providers-odbc",
  "datafusion-table-providers-oracle",
  "datafusion-table-providers-postgres",
- "datafusion-table-providers-quack",
  "datafusion-table-providers-sqlite",
  "duckdb",
  "futures",
@@ -2671,6 +2670,7 @@ dependencies = [
  "dyn-clone",
  "futures",
  "itertools 0.15.0",
+ "quack_protocol",
  "r2d2",
  "rand 0.10.2",
  "reqwest 0.13.4",
@@ -2847,22 +2847,6 @@ dependencies = [
  "datafusion-table-providers",
  "duckdb",
  "pyo3",
- "tokio",
-]
-
-[[package]]
-name = "datafusion-table-providers-quack"
-version = "0.13.1"
-dependencies = [
- "arrow",
- "async-trait",
- "datafusion",
- "datafusion-federation",
- "datafusion-table-providers-common",
- "futures",
- "quack_protocol",
- "secrecy",
- "snafu",
  "tokio",
 ]
 

@@ -794,7 +794,6 @@ impl DuckDBTableFactory {
     }
 }
 
-#[cfg(feature = "embedded")]
 /// For a [`TableReference`] that is a table function, create a name for a view on the original [`TableReference`]
 ///
 /// ### Example
@@ -807,6 +806,7 @@ impl DuckDBTableFactory {
 /// let view_name = create_table_function_view_name(&table_reference);
 /// assert_eq!(view_name.to_string(), "catalog.schema.read_parquet_cleaned_sales_dataparquet__view");
 /// ```
+#[cfg(feature = "embedded")]
 fn create_table_function_view_name(table_reference: &TableReference) -> TableReference {
     let tbl_ref_view = [
         table_reference.catalog(),
@@ -867,8 +867,7 @@ pub(crate) fn make_initial_table(
     Ok(())
 }
 
-#[cfg(feature = "embedded")]
-#[cfg(test)]
+#[cfg(all(test, feature = "embedded"))]
 pub(crate) mod tests {
     use crate::write::DuckDBTableWriter;
 

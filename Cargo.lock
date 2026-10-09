@@ -2674,14 +2674,12 @@ dependencies = [
  "r2d2",
  "rand 0.10.2",
  "reqwest 0.13.4",
- "sea-query",
  "secrecy",
  "snafu",
  "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]

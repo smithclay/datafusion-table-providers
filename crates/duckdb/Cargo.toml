@@ -23,12 +23,10 @@ itertools = { version = "0.15", optional = true }
 quack_protocol = { version = "0.3", features = ["arrow"], optional = true }
 r2d2 = { version = "0.8", optional = true }
 rand = { version = "0.10", optional = true }
-sea-query = { version = "1.0.0", features = ["backend-sqlite", "with-rust_decimal", "with-bigdecimal", "with-time", "with-chrono"], optional = true }
-secrecy = "0.10"
+secrecy = { version = "0.10", optional = true }
 snafu = "0.9"
 tokio = { version = "1.52", features = ["macros", "fs", "sync"] }
 tracing = { version = "0.1", optional = true }
-uuid = { version = "1.18", optional = true }
 
 [features]
 default = ["embedded", "federation"]
@@ -42,12 +40,10 @@ embedded = [
     "dep:itertools",
     "dep:r2d2",
     "dep:rand",
-    "dep:sea-query",
     "dep:tracing",
-    "dep:uuid",
 ]
 # Remote DuckDB over the Quack protocol. Needs no libduckdb.
-quack = ["dep:quack_protocol", "tokio/time"]
+quack = ["dep:quack_protocol", "dep:secrecy", "tokio/time"]
 federation = ["dep:datafusion-federation", "datafusion-table-providers-common/federation"]
 
 [dev-dependencies]
